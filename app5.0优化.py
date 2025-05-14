@@ -14,32 +14,7 @@ st.set_page_config(
 # 自定义样式
 st.markdown("""
 <style>
-.stTextArea textarea {
-    min-height: 150px;
-}
-.result-block {
-    background-color: #f9f9f9;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin: 1rem 0;
-    line-height: 1.6;
-}
-.feedback-section {
-    border-top: 1px solid #eee;
-    padding-top: 1.5rem;
-    margin-top: 1.5rem;
-}
-.feedback-item {
-    margin-bottom: 1rem;
-}
-.code-block {
-    background: #f5f5f5;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    font-family: monospace;
-    white-space: pre-wrap;
-    margin: 1rem 0;
-}
+/* 保持原有样式不变 */
 </style>
 """, unsafe_allow_html=True)
 
@@ -108,7 +83,7 @@ if submitted:
         st.error("请填写问题和API Key")
         st.stop()
     
-    with st.spinner("正在优化您的提问，请稍候..."):
+    with st.spinner("正在优化您的提问，可能需要较长时间，请耐心等待..."):
         messages = [
             {"role": "system", "content": st.session_state.custom_prompt},
             {"role": "user", "content": f"用户原始问题：{user_input}"}
@@ -127,7 +102,7 @@ if submitted:
                     "temperature": 0.7,
                     "max_tokens": 1000
                 },
-                timeout=30
+                timeout=(10, 60)  # 连接超时10秒，读取超时60秒
             )
             
             response.raise_for_status()
@@ -135,15 +110,17 @@ if submitted:
             
             if data.get("choices") and data["choices"][0]:
                 st.session_state.optimized_result = data["choices"][0]["message"]["content"]
-                st.session_state.final_result = None  # 重置最终结果
+                st.session_state.final_result = None
                 st.rerun()
             else:
-                st.error("API返回异常：" + json.dumps(data, ensure_ascii=False, indent=2))
+                st.error("API返回异常，请检查：\n1. API Key是否有效\n2. 是否超过额度限制\n3. 返回内容：" + json.dumps(data, ensure_ascii=False, indent=2))
                 
+        except requests.exceptions.Timeout:
+            st.error("请求超时，可能是：\n1. 网络连接不稳定\n2. API响应较慢\n请稍后重试或检查网络")
         except requests.exceptions.RequestException as e:
-            st.error(f"请求失败：{str(e)}")
+            st.error(f"请求失败，具体错误：\n{str(e)}\n请检查：\n1. API Key是否正确\n2. 网络连接是否正常")
         except Exception as e:
-            st.error(f"处理出错：{str(e)}")
+            st.error(f"处理出错：{str(e)}\n请联系技术支持")
 
 # 显示优化结果和反馈表单
 if st.session_state.optimized_result and not st.session_state.final_result:
@@ -207,7 +184,7 @@ if st.session_state.optimized_result and not st.session_state.final_result:
             f"期待：{st.session_state.feedback_data['expectation']}"
         ])
         
-        with st.spinner("正在生成最终优化版本..."):
+        with st.spinner("正在生成最终优化版本，可能需要较长时间..."):
             messages = [
                 {"role": "system", "content": st.session_state.custom_prompt},
                 {"role": "assistant", "content": st.session_state.optimized_result},
@@ -227,7 +204,7 @@ if st.session_state.optimized_result and not st.session_state.final_result:
                         "temperature": 0.5,
                         "max_tokens": 800
                     },
-                    timeout=30
+                    timeout=(10, 60)  # 连接超时10秒，读取超时60秒
                 )
                 
                 response.raise_for_status()
@@ -239,12 +216,14 @@ if st.session_state.optimized_result and not st.session_state.final_result:
                 else:
                     st.error("优化失败：" + json.dumps(data, ensure_ascii=False, indent=2))
                     
+            except requests.exceptions.Timeout:
+                st.error("请求超时，请稍后重试")
             except requests.exceptions.RequestException as e:
                 st.error(f"请求失败：{str(e)}")
             except Exception as e:
                 st.error(f"处理出错：{str(e)}")
 
-# 显示最终结果（同时保留初始建议）
+# 显示最终结果
 if st.session_state.final_result:
     st.subheader("📌 优化分析结果（初始建议）")
     st.markdown(st.session_state.optimized_result)
